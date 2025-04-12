@@ -13,7 +13,6 @@ from ghidra.util.task import ConsoleTaskMonitor
 from ghidra.app.decompiler import DecompInterface, DecompileOptions
 from ghidra.program.model.pcode import PcodeOp
 
-
 import torch.nn as nn
 import torch.optim as optim
 from torch_geometric.nn import GCNConv
@@ -87,16 +86,17 @@ def train_gnn(model, loader, optimizer, criterion, device):
 
     return total_loss / len(loader)
 
-# Main function
-def main(positive_graphs, negative_graphs):
+def start_training(positive_graphs, negative_graphs):
     # Prepare dataset
-    dataset, labels = prepare_dataset(positive_graphs, negative_graphs)
+    dataset = []
+    dataset.extend(positive_graphs)
+    dataset.extend(negative_graphs)
 
     # Create DataLoader
     loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
     # Define model, optimizer, and loss function
-    input_dim = dataset[0].x.size(0)  # Feature dimension
+    input_dim = dataset[0].x.size(1)  # Feature dimension
     hidden_dim = 64
     output_dim = 32
     model = GNNModel(input_dim, hidden_dim, output_dim).to('cuda')
@@ -155,44 +155,42 @@ def extract_graph_from_high_pcode(high_function):
                 block = op.getParent()
                 for successor_index in range(block.getOutSize()):
                     successor = block.getOut(successor_index)
-                    edges.append((node_id, node_map[successor.getFirstOp()]))
+                    edges.append([node_id, node_map[successor.getFirstOp()]])
                     edge_features.append([1, 0, 0])  # Control flow edge feature
 
             # Add control flow edges (sequential P-code operations)
             if i < len(pcode_ops) - 1 and op_type not in [PcodeOp.BRANCH, PcodeOp.CBRANCH]:
-                edges.append((node_id, node_id + 1))
+                edges.append([node_id, node_id + 1])
                 edge_features.append([1, 0, 0])  # Control flow edge feature
 
             # Add dataflow edges for floating-point operations
             if "FLOAT" in op_mnem and output is not None:
                 descendants = output.getDescendants()
                 for descendant in descendants:
-                    edges.append((node_id, node_map[descendant]))
+                    edges.append([node_id, node_map[descendant]])
                     edge_features.append([0, 1, 0])  # Dataflow edge feature
 
             # Track global variable inputs and outputs
             if output is not None and output.isAddress():
-                edges.append((node_id, global_node_id))
+                edges.append([node_id, global_node_id])
                 edge_features.append([0, 0, 1])  # Global output edge feature
             for inp in inputs:
                 if inp.isAddress():
-                    edges.append((global_node_id, node_id))
+                    edges.append([global_node_id, node_id])
                     edge_features.append([0, 0, 1])  # Global input edge feature
 
     except Exception as e:
         print(f"[!] Error extracting graph: {e}")
 
-    print (nodes, edges, edge_features)
-
     return nodes, edges, edge_features
 
 
-def format_graph_for_gnn(nodes, edges, edge_features):
+def format_graph_for_gnn(nodes, edges, edge_features, label):
     """
     Format the extracted graph into a PyTorch Geometric Data object.
     """
     # Create node features (e.g., one-hot encoding of operation types)
-    node_features = torch.tensor([node["type"] for node in nodes], dtype=torch.int32)
+    node_features = torch.tensor([[node["type"] for node in nodes]], dtype=torch.float).t().contiguous()
 
     # Create edge indices
     edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
@@ -204,10 +202,10 @@ def format_graph_for_gnn(nodes, edges, edge_features):
     data = Data(
         x=node_features,
         edge_index=edge_index,
-        edge_attr=edge_attr,  # Edge feature matrix
-        y=None  # Add labels if available
+        edge_attr=edge_attr,
+        y=torch.tensor([label], dtype=torch.float) 
     )
-
+    
     return data
 
 # MIME types considered executable
@@ -244,8 +242,7 @@ def import_and_process_binaries(binary_dir, functions_to_find):
             if not is_executable_file(file_path):
                 continue
             
-            if True:
-            # try:
+            try:
                 project_name = flatten_path(file_path)
                 print(f"[*] Importing {file_path} with project name {project_name}")
                 with pyghidra.open_program(file_path,
@@ -259,7 +256,7 @@ def import_and_process_binaries(binary_dir, functions_to_find):
                     decomp.setOptions(DecompileOptions())
                     monitor = ConsoleTaskMonitor()
 
-                    for function in all_functions:
+                    for function in tqdm(all_functions, desc="Processing Functions", leave=True, colour="blue", position=1):
                         positive = False
                         for target_function in functions_to_find:
                             if target_function in function.getName():
@@ -269,7 +266,7 @@ def import_and_process_binaries(binary_dir, functions_to_find):
                         results = decomp.decompileFunction(function, 60, monitor)
                         high_function = results.getHighFunction()
                         nodes, edges, edge_features = extract_graph_from_high_pcode(high_function)
-                        graph = format_graph_for_gnn(nodes, edges, edge_features)
+                        graph = format_graph_for_gnn(nodes, edges, edge_features, label=1 if positive else 0)
                         
                         if positive:
                             positive_graphs.append(graph)
@@ -278,8 +275,8 @@ def import_and_process_binaries(binary_dir, functions_to_find):
                         
 
                     print(f"[+] Processed binary: {file_path}")
-            # except Exception as e:
-            #     print(f"[!] Failed to import {file_path}: {e}")
+            except Exception as e:
+                print(f"[!] Failed to import {file_path}: {e}")
 
     return positive_graphs, negative_graphs
 
@@ -290,7 +287,7 @@ if __name__ == "__main__":
     magic_checker = magic.Magic(mime=True)
     positive_graphs, negative_graphs = [], []
     
-    for index, row in tqdm(df.iterrows(), total=len(df), desc="Processing Binaries", leave=True, colour="green"):
+    for index, row in tqdm(df.iterrows(), total=len(df), desc="Processing Binaries", leave=True, colour="green", position=0):
         BINARY_DIR = f"Binaries/{row['Name']}"
         
         name = row['Name']        
@@ -303,7 +300,4 @@ if __name__ == "__main__":
         negative_graphs.extend(neg)
         break
 
-    # print(positive_graphs)
-    # print(negative_graphs)
-    #main(positive_graphs, negative_graphs)
-
+    start_training(positive_graphs, negative_graphs)

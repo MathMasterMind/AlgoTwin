@@ -19,7 +19,7 @@ echo GHIDRA_INSTALL_PATH="%CD%\ghidra_11.3.1_PUBLIC_20250219" > LocalConfig.py
 python3 -m venv venv
 call "venv\Scripts\activate.bat"
 pip install -i https://download.pytorch.org/whl/cu126 torch torchvision torchaudio 
-pip install python-magic pyghidra pandas python-Levenshtein torch_geometric
+pip install python-magic pyghidra pandas python-Levenshtein torch_geometric python-magic-bin
 python -m pip install --upgrade pip
 
 @REM :: Download the dataset
