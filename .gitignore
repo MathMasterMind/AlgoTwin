@@ -1,9 +1,14 @@
+# local structure
+Binaries
+ghidra_files
+ghidra_11.3.1_PUBLIC_20250219
+ghidra_11.3.1_PUBLIC_20250219.zip
+LocalConfig.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-Binaries
-ghidra_files
 
 # C extensions
 *.so
