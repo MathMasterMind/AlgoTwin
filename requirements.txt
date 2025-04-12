@@ -1,0 +1,9 @@
+python-magic
+pyghidra
+pandas
+python-Levenshtein
+-i https://download.pytorch.org/whl/cu126
+torch 
+torchvision 
+torchaudio 
+torch_geometric
