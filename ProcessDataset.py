@@ -110,7 +110,7 @@ def start_training(positive_graphs, negative_graphs):
 
     # Save the trained model to a file
     model_save_path = "trained_gnn_model.pth"
-    torch.save(model.state_dict(), model_save_path )
+    torch.save(model.state_dict(), model_save_path)
     print(f"Model saved to {model_save_path}")
 
     # Save the model dimensions to a JSON file
@@ -123,6 +123,20 @@ def start_training(positive_graphs, negative_graphs):
     with open(dimensions_save_path, "w") as f:
         json.dump(dimensions, f)
     print(f"Model dimensions saved to {dimensions_save_path}")
+
+    # Save the embeddings for positive graphs
+    positive_embeddings = []
+    with torch.no_grad():
+        for graph in positive_graphs:
+            graph = graph.to('cuda')
+            output = model(graph)
+            embedding = torch.mean(output, dim=0, keepdim=True)
+            positive_embeddings.append(embedding.cpu().tolist())
+
+    embeddings_save_path = "positive_embeddings.json"
+    with open(embeddings_save_path, "w") as f:
+        json.dump(positive_embeddings, f)
+    print(f"Positive embeddings saved to {embeddings_save_path}")
 
 def extract_graph_from_high_pcode(high_function):
     """
@@ -201,7 +215,16 @@ def extract_graph_from_high_pcode(high_function):
 def format_graph_for_gnn(nodes, edges, edge_features, label):
     """
     Format the extracted graph into a PyTorch Geometric Data object.
+    Handles cases where the graph has no nodes or edges.
     """
+    if len(nodes) == 0:
+        # Handle graph with no nodes
+        nodes = [{"type": 0}]  # Add a dummy node with a default type
+    if len(edges) == 0:
+        # Handle graph with no edges
+        edges = [(0, 0)]  # Add a self-loop edge for the dummy node
+        edge_features = [[0, 0, 0]]  # Add a default edge feature
+
     # Create node features (e.g., one-hot encoding of operation types)
     node_features = torch.tensor([[node["type"] for node in nodes]], dtype=torch.float).t().contiguous()
 
@@ -216,7 +239,7 @@ def format_graph_for_gnn(nodes, edges, edge_features, label):
         x=node_features,
         edge_index=edge_index,
         edge_attr=edge_attr,
-        y=torch.tensor([label], dtype=torch.float) 
+        y=torch.tensor([label], dtype=torch.float)  # Add label
     )
     
     return data
@@ -269,7 +292,7 @@ def import_and_process_binaries(binary_dir, functions_to_find):
                     decomp.setOptions(DecompileOptions())
                     monitor = ConsoleTaskMonitor()
 
-                    for function in tqdm(all_functions, desc="Processing Functions", leave=True, colour="blue", position=1):
+                    for function in tqdm(all_functions, total=function_manager.getFunctionCount(), desc="Processing Functions", leave=True, colour="blue", position=1):
                         positive = False
                         for target_function in functions_to_find:
                             if target_function in function.getName():
