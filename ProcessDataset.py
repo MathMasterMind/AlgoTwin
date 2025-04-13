@@ -16,14 +16,17 @@ from ghidra.program.model.pcode import PcodeOp
 import torch.nn as nn
 import torch.optim as optim
 from torch_geometric.nn import GCNConv
-from torch_geometric.data import DataLoader
+from torch_geometric.loader import DataLoader
+import torch_scatter
+import json
 
 # Define the GNN model
 class GNNModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim, num_classes=2):
         super(GNNModel, self).__init__()
-        self.conv1 = GCNConv(input_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, output_dim)
+        self.conv1 = GCNConv(in_channels=input_dim, out_channels=hidden_dim)
+        self.conv2 = GCNConv(in_channels=hidden_dim, out_channels=output_dim)
+        self.classifier = nn.Linear(output_dim, num_classes)  # Classification layer
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -31,6 +34,9 @@ class GNNModel(nn.Module):
         x = torch.relu(x)
         x = self.conv2(x, edge_index)
         return x
+
+    def predict(self, graph_embedding):
+        return self.classifier(graph_embedding)
 
 # Contrastive loss function
 class ContrastiveLoss(nn.Module):
@@ -44,23 +50,6 @@ class ContrastiveLoss(nn.Module):
         loss = label * distance**2 + (1 - label) * torch.clamp(self.margin - distance, min=0)**2
         return loss.mean()
 
-# Prepare the dataset
-def prepare_dataset(positive_graphs, negative_graphs):
-    dataset = []
-    labels = []
-
-    # Add positive graphs with label 1
-    for graph in positive_graphs:
-        dataset.append(graph)
-        labels.append(1)
-
-    # Add negative graphs with label 0
-    for graph in negative_graphs:
-        dataset.append(graph)
-        labels.append(0)
-
-    return dataset, torch.tensor(labels, dtype=torch.float)
-
 # Training loop
 def train_gnn(model, loader, optimizer, criterion, device):
     model.train()
@@ -71,12 +60,20 @@ def train_gnn(model, loader, optimizer, criterion, device):
         optimizer.zero_grad()
 
         # Forward pass
-        z = model(data)
+        z = model(data)  # Node embeddings of shape [total_num_nodes, output_dim]
 
-        # Contrastive loss
-        # Assume we have pairs of graphs (z1, z2) and their labels
-        z1, z2 = z[:len(z)//2], z[len(z)//2:]
-        labels = data.y[:len(z)//2]
+        # Aggregate node embeddings into graph-level embeddings
+        # Use scatter_mean to compute the mean embedding for each graph
+        graph_embeddings = torch_scatter.scatter_mean(z, data.batch, dim=0)
+
+        # Separate graph embeddings into pairs
+        mid = len(graph_embeddings) // 2
+        z1, z2 = graph_embeddings[:mid], graph_embeddings[mid:mid + len(graph_embeddings[:mid])]
+
+        # Get labels for the graph pairs
+        labels = data.y[:mid]  # Ensure labels match the size of z1 and z2
+
+        # Compute contrastive loss
         loss = criterion(z1, z2, labels)
 
         # Backward pass
@@ -110,6 +107,22 @@ def start_training(positive_graphs, negative_graphs):
         print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss:.4f}")
 
     print("Training complete!")
+
+    # Save the trained model to a file
+    model_save_path = "trained_gnn_model.pth"
+    torch.save(model.state_dict(), model_save_path )
+    print(f"Model saved to {model_save_path}")
+
+    # Save the model dimensions to a JSON file
+    dimensions = {
+        "input_dim": input_dim,
+        "hidden_dim": hidden_dim,
+        "output_dim": output_dim
+    }
+    dimensions_save_path = "model_dimensions.json"
+    with open(dimensions_save_path, "w") as f:
+        json.dump(dimensions, f)
+    print(f"Model dimensions saved to {dimensions_save_path}")
 
 def extract_graph_from_high_pcode(high_function):
     """
@@ -298,6 +311,5 @@ if __name__ == "__main__":
         pos, neg = import_and_process_binaries(BINARY_DIR, functions_to_find)
         positive_graphs.extend(pos)
         negative_graphs.extend(neg)
-        break
 
     start_training(positive_graphs, negative_graphs)

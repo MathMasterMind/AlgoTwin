@@ -4,6 +4,8 @@ ghidra_files
 ghidra_11.3.1_PUBLIC_20250219
 ghidra_11.3.1_PUBLIC_20250219.zip
 LocalConfig.py
+trained_gnn_model.pth
+arducopter
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
