@@ -7,6 +7,8 @@ from tqdm import tqdm
 import torch
 from torch_geometric.data import Data
 import pyghidra
+import pickle
+import random
 
 pyghidra.start(verbose=True, install_dir=GHIDRA_INSTALL_PATH)
 from ghidra.util.task import ConsoleTaskMonitor
@@ -40,16 +42,20 @@ def create_graph_pairs(positive_graphs, negative_graphs):
     labels = []
 
     # Generate positive pairs
-    for i in range(len(positive_graphs)):
-        for j in range(i + 1, len(positive_graphs)):  # Avoid pairing a graph with itself
-            pairs.append((positive_graphs[i], positive_graphs[j]))
-            labels.append(1)  # Positive pair
+    # Get 5000 Random pair positive graphs
+    for i in range(5000):
+        pos_graph1 = random.choice(positive_graphs)
+        pos_graph2 = random.choice(positive_graphs)
+        pairs.append((pos_graph1, pos_graph2))
+        labels.append(1)
 
     # Generate negative pairs
-    for pos_graph in positive_graphs:
-        for neg_graph in negative_graphs:
-            pairs.append((pos_graph, neg_graph))
-            labels.append(0)  # Negative pair
+    # Get 5000 Random pair positive graphs with negative graphs
+    for i in range(5000):
+        pos_graph = random.choice(positive_graphs)
+        neg_graph = random.choice(negative_graphs)
+        pairs.append((pos_graph, neg_graph))
+        labels.append(0)  # Negative pair
 
     return pairs, labels
 
@@ -88,7 +94,7 @@ def train_gnn(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0
 
-    for graph1, graph2, labels in loader:
+    for graph1, graph2, labels in tqdm(loader, desc="Training", leave=True, colour="blue", position=1):
         graph1, graph2, labels = graph1.to(device), graph2.to(device), labels.to(device)
 
         optimizer.zero_grad()
@@ -129,9 +135,9 @@ def start_training(positive_graphs, negative_graphs):
 
     # Train the model
     epochs = 20
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs), desc="Training", leave=True, colour="red", position=0):
         loss = train_gnn(model, loader, optimizer, criterion, 'cuda')
-        print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss:.4f}")
+        tqdm.write(f"Epoch {epoch + 1}/{epochs}, Loss: {loss:.4f}")
 
     print("Training complete!")
 
@@ -361,5 +367,17 @@ if __name__ == "__main__":
         pos, neg = import_and_process_binaries(BINARY_DIR, functions_to_find)
         positive_graphs.extend(pos)
         negative_graphs.extend(neg)
+
+    # write positive_graphs and negative_graphs to pkl files
+    with open("positive_graphs.pkl", "wb") as f:
+        pickle.dump(positive_graphs, f)
+    with open("negative_graphs.pkl", "wb") as f:
+        pickle.dump(negative_graphs, f)
+
+    # load the graphs from pkl files
+    with open("positive_graphs.pkl", "rb") as f:
+        positive_graphs = pickle.load(f)
+    with open("negative_graphs.pkl", "rb") as f:
+        negative_graphs = pickle.load(f)
 
     start_training(positive_graphs, negative_graphs)

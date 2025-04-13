@@ -8,6 +8,7 @@ trained_gnn_model.pth
 arducopter
 positive_embeddings.json
 closest_functions.txt
+*.pkl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
