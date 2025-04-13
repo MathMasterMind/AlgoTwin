@@ -60,7 +60,7 @@ def compute_closest_positive_embeddings(model, functions, total, positive_embedd
 
             # Find the closest positive embedding
             min_distance = torch.min(distances).item()
-            function_distances.append((function.getName(), min_distance))
+            function_distances.append((function.getSignature(), min_distance))
 
     # Sort functions by distance
     function_distances.sort(key=lambda x: x[1])

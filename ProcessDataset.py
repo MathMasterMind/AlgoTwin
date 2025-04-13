@@ -1,11 +1,11 @@
 import pandas as pd
 import os
+import argparse
 import magic
 import pyghidra
 from LocalConfig import GHIDRA_INSTALL_PATH
 from tqdm import tqdm
 import torch
-from torch_geometric.data import Data
 import pyghidra
 import pickle
 import random
@@ -18,10 +18,41 @@ from ghidra.program.model.pcode import PcodeOp
 import torch.nn as nn
 import torch.optim as optim
 from torch_geometric.nn import GCNConv
-from torch_geometric.data import DataLoader
+from torch_geometric.data import Data, DataLoader
 from torch.utils.data import Dataset
 import torch_scatter
 import json
+
+import json
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+import numpy as np
+
+# temporarily disable OpenMP threading to avoid issues with PyTorch
+os.environ['OMP_NUM_THREADS'] = '1'
+
+def plot_embeddings(positive_embeddings, negative_embeddings):
+    positive_embeddings = np.array(positive_embeddings).squeeze()
+    negative_embeddings = np.array(negative_embeddings).squeeze()
+    all_embeddings = np.vstack((positive_embeddings, negative_embeddings))
+    labels = np.array([1] * len(positive_embeddings) + [0] * len(negative_embeddings))
+
+    # Reduce dimensions using t-SNE
+    tsne = TSNE(n_components=2, random_state=42)
+    embeddings_2d = tsne.fit_transform(all_embeddings)
+
+    # Split for plotting
+    positive_2d = embeddings_2d[labels == 1]
+    negative_2d = embeddings_2d[labels == 0]
+
+    # Plot
+    plt.figure(figsize=(10, 8))
+    plt.scatter(negative_2d[:, 0], negative_2d[:, 1], c='red', label='Negative', alpha=0.6)
+    plt.scatter(positive_2d[:, 0], positive_2d[:, 1], c='blue', label='Positive', alpha=0.6)
+    plt.legend()
+    plt.title("2D t-SNE Visualization of Graph Embeddings")
+    plt.grid(True)
+    plt.savefig("graph_embeddings.png")
 
 # Create a dataset and DataLoader
 class GraphPairDataset(Dataset):
@@ -41,9 +72,11 @@ def create_graph_pairs(positive_graphs, negative_graphs):
     pairs = []
     labels = []
 
+    num_pairs = 5000
+
     # Generate positive pairs
     # Get 5000 Random pair positive graphs
-    for i in range(5000):
+    for i in range(num_pairs):
         pos_graph1 = random.choice(positive_graphs)
         pos_graph2 = random.choice(positive_graphs)
         pairs.append((pos_graph1, pos_graph2))
@@ -51,7 +84,7 @@ def create_graph_pairs(positive_graphs, negative_graphs):
 
     # Generate negative pairs
     # Get 5000 Random pair positive graphs with negative graphs
-    for i in range(5000):
+    for i in range(num_pairs):
         pos_graph = random.choice(positive_graphs)
         neg_graph = random.choice(negative_graphs)
         pairs.append((pos_graph, neg_graph))
@@ -94,7 +127,7 @@ def train_gnn(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0
 
-    for graph1, graph2, labels in tqdm(loader, desc="Training", leave=True, colour="blue", position=1):
+    for graph1, graph2, labels in tqdm(loader, desc="Training", leave=False, colour="blue", position=1):
         graph1, graph2, labels = graph1.to(device), graph2.to(device), labels.to(device)
 
         optimizer.zero_grad()
@@ -170,6 +203,17 @@ def start_training(positive_graphs, negative_graphs):
     with open(embeddings_save_path, "w") as f:
         json.dump(positive_embeddings, f)
     print(f"Positive embeddings saved to {embeddings_save_path}")
+
+    negative_embeddings = []
+    with torch.no_grad():
+        for graph in negative_graphs:
+            graph = graph.to('cuda')
+            output = model(graph)
+            embedding = torch.mean(output, dim=0, keepdim=True)
+            negative_embeddings.append(embedding.cpu().tolist())
+
+    # plot the embeddings
+    plot_embeddings(positive_embeddings, negative_embeddings)
 
 def extract_graph_from_high_pcode(high_function):
     """
@@ -351,28 +395,33 @@ def import_and_process_binaries(binary_dir, functions_to_find):
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description="Process dataset and train GNN model")
+    parser.add_argument("-b", "--binaries", type=bool, default=False, help="Process binaries")
+    args = parser.parse_args()
+
     csv_file = "dataset.csv"
     df = pd.read_csv(csv_file)
     magic_checker = magic.Magic(mime=True)
     positive_graphs, negative_graphs = [], []
     
-    for index, row in tqdm(df.iterrows(), total=len(df), desc="Processing Binaries", leave=True, colour="green", position=0):
-        BINARY_DIR = f"Binaries/{row['Name']}"
-        
-        name = row['Name']        
-        # find elements in row that are not 'Name' or None
-        functions_to_find = [row[col] for col in df.columns if col != 'Name' and pd.notna(row[col])]
+    if args.binaries:
+        for index, row in tqdm(df.iterrows(), total=len(df), desc="Processing Binaries", leave=True, colour="green", position=0):
+            BINARY_DIR = f"Binaries/{row['Name']}"
+            
+            name = row['Name']        
+            # find elements in row that are not 'Name' or None
+            functions_to_find = [row[col] for col in df.columns if col != 'Name' and pd.notna(row[col])]
 
-        print("[*] Importing %s" % BINARY_DIR)
-        pos, neg = import_and_process_binaries(BINARY_DIR, functions_to_find)
-        positive_graphs.extend(pos)
-        negative_graphs.extend(neg)
+            print("[*] Importing %s" % BINARY_DIR)
+            pos, neg = import_and_process_binaries(BINARY_DIR, functions_to_find)
+            positive_graphs.extend(pos)
+            negative_graphs.extend(neg)
 
-    # write positive_graphs and negative_graphs to pkl files
-    with open("positive_graphs.pkl", "wb") as f:
-        pickle.dump(positive_graphs, f)
-    with open("negative_graphs.pkl", "wb") as f:
-        pickle.dump(negative_graphs, f)
+        # write positive_graphs and negative_graphs to pkl files
+        with open("positive_graphs.pkl", "wb") as f:
+            pickle.dump(positive_graphs, f)
+        with open("negative_graphs.pkl", "wb") as f:
+            pickle.dump(negative_graphs, f)
 
     # load the graphs from pkl files
     with open("positive_graphs.pkl", "rb") as f:

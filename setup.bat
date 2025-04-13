@@ -20,7 +20,7 @@ python3 -m venv venv
 call "venv\Scripts\activate.bat"
 python -m pip install --upgrade pip
 pip install -i https://download.pytorch.org/whl/cu126 torch torchvision torchaudio 
-pip install python-magic pyghidra pandas python-Levenshtein torch_geometric python-magic-bin setuptools wheel
+pip install python-magic pyghidra pandas python-Levenshtein torch_geometric python-magic-bin setuptools wheel matplotlib scikit-learn
 pip install --no-use-pep517 torch_scatter
 
 @REM :: Download the dataset
