@@ -1,2 +1,3 @@
 call "venv\Scripts\activate.bat"
-python3 -m venv venv; python ProcessDataset.py
+python ProcessDataset.py
+python Detector.py

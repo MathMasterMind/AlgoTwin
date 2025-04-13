@@ -91,3 +91,8 @@ if __name__ == "__main__":
         with open("closest_functions.txt", "w") as f:
             for function_name, distance in sorted_functions:
                 f.write(f"Function: {function_name}, Distance: {distance}\n")
+
+        # print top 10 closest functions
+        print("Top 10 closest functions:")
+        for function_name, distance in sorted_functions[:10]:
+            print(f"Function: {function_name}, Distance: {distance}")

@@ -16,9 +16,42 @@ from ghidra.program.model.pcode import PcodeOp
 import torch.nn as nn
 import torch.optim as optim
 from torch_geometric.nn import GCNConv
-from torch_geometric.loader import DataLoader
+from torch_geometric.data import DataLoader
+from torch.utils.data import Dataset
 import torch_scatter
 import json
+
+# Create a dataset and DataLoader
+class GraphPairDataset(Dataset):
+    def __init__(self, pairs, labels):
+        self.pairs = pairs
+        self.labels = labels
+
+    def __len__(self):
+        return len(self.pairs)
+
+    def __getitem__(self, idx):
+        graph1, graph2 = self.pairs[idx]
+        label = self.labels[idx]
+        return graph1, graph2, label
+
+def create_graph_pairs(positive_graphs, negative_graphs):
+    pairs = []
+    labels = []
+
+    # Generate positive pairs
+    for i in range(len(positive_graphs)):
+        for j in range(i + 1, len(positive_graphs)):  # Avoid pairing a graph with itself
+            pairs.append((positive_graphs[i], positive_graphs[j]))
+            labels.append(1)  # Positive pair
+
+    # Generate negative pairs
+    for pos_graph in positive_graphs:
+        for neg_graph in negative_graphs:
+            pairs.append((pos_graph, neg_graph))
+            labels.append(0)  # Negative pair
+
+    return pairs, labels
 
 # Define the GNN model
 class GNNModel(nn.Module):
@@ -55,26 +88,22 @@ def train_gnn(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0
 
-    for data in loader:
-        data = data.to(device)
+    for graph1, graph2, labels in loader:
+        graph1, graph2, labels = graph1.to(device), graph2.to(device), labels.to(device)
+
         optimizer.zero_grad()
 
         # Forward pass
-        z = model(data)  # Node embeddings of shape [total_num_nodes, output_dim]
+        z1 = model(graph1)  # Node embeddings of shape [total_num_nodes, output_dim]
+        z2 = model(graph2)  # Node embeddings of shape [total_num_nodes, output_dim]
 
         # Aggregate node embeddings into graph-level embeddings
         # Use scatter_mean to compute the mean embedding for each graph
-        graph_embeddings = torch_scatter.scatter_mean(z, data.batch, dim=0)
-
-        # Separate graph embeddings into pairs
-        mid = len(graph_embeddings) // 2
-        z1, z2 = graph_embeddings[:mid], graph_embeddings[mid:mid + len(graph_embeddings[:mid])]
-
-        # Get labels for the graph pairs
-        labels = data.y[:mid]  # Ensure labels match the size of z1 and z2
+        graph_embeddings1 = torch_scatter.scatter_mean(z1, graph1.batch, dim=0)
+        graph_embeddings2 = torch_scatter.scatter_mean(z2, graph2.batch, dim=0)
 
         # Compute contrastive loss
-        loss = criterion(z1, z2, labels)
+        loss = criterion(graph_embeddings1, graph_embeddings2, labels)
 
         # Backward pass
         loss.backward()
@@ -85,15 +114,13 @@ def train_gnn(model, loader, optimizer, criterion, device):
 
 def start_training(positive_graphs, negative_graphs):
     # Prepare dataset
-    dataset = []
-    dataset.extend(positive_graphs)
-    dataset.extend(negative_graphs)
+    pairs, labels = create_graph_pairs(positive_graphs, negative_graphs)
 
-    # Create DataLoader
+    dataset = GraphPairDataset(pairs, labels)
     loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
     # Define model, optimizer, and loss function
-    input_dim = dataset[0].x.size(1)  # Feature dimension
+    input_dim = 1  # Feature dimension
     hidden_dim = 64
     output_dim = 32
     model = GNNModel(input_dim, hidden_dim, output_dim).to('cuda')
@@ -239,7 +266,7 @@ def format_graph_for_gnn(nodes, edges, edge_features, label):
         x=node_features,
         edge_index=edge_index,
         edge_attr=edge_attr,
-        y=torch.tensor([label], dtype=torch.float)  # Add label
+        y=torch.tensor([label], dtype=torch.int32)  # Add label
     )
     
     return data
