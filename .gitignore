@@ -1,14 +1,15 @@
 # local structure
-Binaries
-ghidra_files
-ghidra_11.3.1_PUBLIC_20250219
-ghidra_11.3.1_PUBLIC_20250219.zip
+Binaries/
+ghidra_files/
+ghidra_11.3.1_PUBLIC_20250219/
+
+*.pkl
+*.json 
+*.zip
+
 LocalConfig.py
 trained_gnn_model.pth
-arducopter
-positive_embeddings.json
 closest_functions.txt
-*.pkl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

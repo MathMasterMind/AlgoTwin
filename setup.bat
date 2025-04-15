@@ -22,13 +22,3 @@ python -m pip install --upgrade pip
 pip install -i https://download.pytorch.org/whl/cu126 torch torchvision torchaudio 
 pip install python-magic pyghidra pandas python-Levenshtein torch_geometric python-magic-bin setuptools wheel matplotlib scikit-learn
 pip install --no-use-pep517 torch_scatter
-
-@REM :: Download the dataset
-@REM set "URL=https://github.com/MathMasterMind/ECE6254-Project/releases/download/Training/Binaries.zip"
-@REM set "ZIPFILE=Binaries.zip"
-
-@REM echo Downloading %ZIPFILE%...
-@REM if not exist "%ZIPFILE%" powershell -Command "Invoke-WebRequest -Uri '%URL%' -OutFile '%ZIPFILE%'"
-
-@REM echo Extracting %ZIPFILE%...
-@REM powershell -Command "Expand-Archive -LiteralPath '%ZIPFILE%' -Force"
