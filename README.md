@@ -17,7 +17,7 @@ This project implements a **Graph Neural Network (GNN)** for analyzing binary fi
 ## Requirements
 
 ### Operating System
-- **Windows** (required for Ghidra integration)
+- **Windows**
 
 ### Dependencies
 - **Java JDK 21**: [Download here](https://www.oracle.com/java/technologies/downloads/#java21)
@@ -33,8 +33,8 @@ This project implements a **Graph Neural Network (GNN)** for analyzing binary fi
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/your-repo/ECE6254-Project.git
-   cd ECE6254-Project
+   git clone https://github.com/MathMasterMind/AlgoTwin.git
+   cd AlgoTwin
    ```
 
 2. **Install Java JDK 21**:
