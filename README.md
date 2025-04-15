@@ -130,6 +130,8 @@ ECE6254-Project/
 
 ---
 
+![Diagram of training pipeline](assets/Diagram.jpg)
+
 ## Troubleshooting
 
 1. **CUDA PyTorch Could Not Install**:

@@ -6,6 +6,7 @@ ghidra_11.3.1_PUBLIC_20250219/
 *.pkl
 *.json 
 *.zip
+*.bkp
 
 LocalConfig.py
 trained_gnn_model.pth
